@@ -14,10 +14,10 @@ env="${1:?entorno}"; node="${2:?nodo}"; action="${3:?accion}"
 command -v ipmitool >/dev/null || { echo "Falta ipmitool (apt install ipmitool)." >&2; exit 1; }
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-hostvars=$(ansible-inventory -i "$root/inventory/$env" --host "$node")
+hostvars=$(ansible-inventory -i "${PLATFORM_INVENTORY_DIR:-$root/inventory}/$env" --host "$node")
 bmc=$(jq -r '.bmc.host // empty' <<<"$hostvars")
 iface=$(jq -r '.bmc.interface // "lanplus"' <<<"$hostvars")
-[ -n "$bmc" ] || { echo "$node no tiene bmc.host en inventory/$env" >&2; exit 1; }
+[ -n "$bmc" ] || { echo "$node no tiene bmc.host en el inventario $env" >&2; exit 1; }
 
 ipmi() { IPMITOOL_PASSWORD="$IPMI_PASSWORD" ipmitool -I "$iface" -H "$bmc" -U "$IPMI_USER" -E "$@"; }
 confirm() { read -r -p "$1 $node ($bmc)? Escribe el nombre del nodo para seguir: " a; [ "$a" = "$node" ] || { echo "Cancelado."; exit 1; }; }

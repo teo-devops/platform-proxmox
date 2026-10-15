@@ -3,13 +3,17 @@
 # Referencia: docs/README.md
 
 ENV ?=
-INV := inventory/$(ENV)
+# Donde estan los entornos. Por defecto, inventory/ de este repo; desde un repo privado
+# con este como submodulo: INVENTORY_DIR=<ruta absoluta> (docs/inventario.md).
+INVENTORY_DIR ?= $(CURDIR)/inventory
+export PLATFORM_INVENTORY_DIR := $(INVENTORY_DIR)
+INV := $(INVENTORY_DIR)/$(ENV)
 EXAMPLES := 2-nodos 3-nodos 5-nodos
 # Contraseña de ansible-vault: VAULT_PASS_FILE=<fichero> o, por defecto, se pregunta.
 VAULT := $(if $(VAULT_PASS_FILE),--vault-password-file $(VAULT_PASS_FILE),--ask-vault-pass)
 export ANSIBLE_CONFIG := $(CURDIR)/ansible.cfg
 # Verificacion estricta contra el known_hosts del entorno (make known-hosts).
-SSH_ARGS := -o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$(CURDIR)/$(INV)/known_hosts
+SSH_ARGS := -o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$(INV)/known_hosts
 # ARGS: lo que se pasa tal cual a ansible-playbook (p. ej. ARGS="--tags network --limit pve2").
 PLAY := ANSIBLE_SSH_ARGS="$(SSH_ARGS)" ansible-playbook -i $(INV) $(VAULT) ansible/playbooks/site.yml $(ARGS)
 
@@ -51,7 +55,7 @@ need-env:
 new:
 	@test -n "$(ENV)" -a -n "$(FROM)" || { echo "make new ENV=<entorno> FROM=<2-nodos|3-nodos|5-nodos>"; exit 1; }
 	@test ! -e "$(INV)" || { echo "$(INV) ya existe"; exit 1; }
-	@mkdir -p inventory && cp -r examples/$(FROM) $(INV)
+	@mkdir -p $(INVENTORY_DIR) && cp -r examples/$(FROM) $(INV)
 	@echo "✓ $(INV) creado desde examples/$(FROM)."
 	@echo "  1. Edita $(INV)/hosts.yml y $(INV)/group_vars/all/main.yml (docs/inventario.md)"
 	@echo "  2. Pon tus secretos en $(INV)/group_vars/all/vault.yml y cifralo:"
