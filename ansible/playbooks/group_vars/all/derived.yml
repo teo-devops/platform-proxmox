@@ -1,0 +1,18 @@
+---
+# Valores DERIVADOS del inventario (no se configuran: se calculan). Viven junto a los
+# playbooks para que valgan para cualquier inventario. Referencia: docs/inventario.md
+
+pve_first_node: "{{ groups['pve_nodes'][0] }}"
+pve_node_count: "{{ groups['pve_nodes'] | length }}"
+pve_is_first: "{{ inventory_hostname == groups['pve_nodes'][0] }}"
+# Con un numero par de nodos (y mas de uno), el QDevice aporta el voto que desempata.
+pve_needs_qdevice: "{{ (pve_node_count | int) > 1 and (pve_node_count | int) % 2 == 0 }}"
+pve_use_qdevice: "{{ pve_needs_qdevice | bool and (cluster.qdevice_host | default(none)) is not none }}"
+pve_codename: "{{ {8: 'bookworm', 9: 'trixie'}[pve.major | int] }}"
+pve_zfs: "{{ pve.filesystem == 'zfs' }}"
+# ZFS segun el numero de discos, salvo que el nodo diga otra cosa (pve_zfs_raid).
+pve_zfs_raid_effective: >-
+  {{ pve_zfs_raid | default({1: 'raid0', 2: 'raid1'}.get(pve_disks | length, 'raidz-1')) }}
+# Datastore de las VMs que crea el instalador: lo necesita pve-platform-iac (make handoff).
+pve_vm_datastore: "{{ 'local-zfs' if pve_zfs | bool else 'local-lvm' }}"
+pve_fqdn: "{{ inventory_hostname }}.{{ cluster.domain }}"

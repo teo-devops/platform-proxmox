@@ -1,0 +1,29 @@
+# answer.toml del instalador desatendido de Proxmox VE para pve03.
+# Generado por `make answers ENV=...` desde el inventario: no lo edites, cambia el
+# inventario. Contiene el HASH de la contraseña de root: no lo subas al repo
+# (build/ esta en .gitignore). Formato: https://pve.proxmox.com/wiki/Automated_Installation
+
+[global]
+keyboard = "es"
+country = "es"
+fqdn = "pve03.pve.example.internal"
+mailto = "infra@example.com"
+timezone = "Europe/Madrid"
+root-password-hashed = "$6$ejemplo$ESTO.NO.ES.UN.HASH.REAL.genera.el.tuyo.con.openssl.passwd.6"
+root-ssh-keys = [
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleExampleExampleExampleExampleEx admin",
+]
+reboot-on-error = false
+
+[network]
+source = "from-answer"
+cidr = "10.30.0.13/24"
+dns = "10.30.0.2"
+gateway = "10.30.0.1"
+
+[disk-setup]
+filesystem = "zfs"
+disk-list = ["sda", "sdb"]
+zfs.raid = "raid1"
+zfs.ashift = 12
+zfs.compress = "lz4"

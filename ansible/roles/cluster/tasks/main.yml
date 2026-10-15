@@ -1,0 +1,56 @@
+---
+# Cluster: el primer nodo del inventario lo crea y el resto se une, de uno en uno
+# (serial: 1 en site.yml). El join va por la API de Proxmox con la contraseña de root
+# y la huella del certificado del primer nodo: no necesita SSH entre nodos.
+# Con un solo nodo no hay cluster que crear. Referencia: docs/postinstalacion.md (cluster)
+
+- name: ¿Ya esta en un cluster?
+  ansible.builtin.stat:
+    path: /etc/pve/corosync.conf
+  register: cluster_conf
+
+- name: Direcciones de corosync de este nodo
+  ansible.builtin.set_fact:
+    cluster_links: >-
+      --link0 address={{ ansible_host }}
+      {% if pve_corosync_link1 is defined %} --link1 address={{ pve_corosync_link1.ip }}{% endif %}
+
+- name: Crear el cluster (primer nodo)
+  ansible.builtin.command: pvecm create {{ cluster.name }} {{ cluster_links }}
+  changed_when: true
+  when: pve_is_first | bool and not cluster_conf.stat.exists and (pve_node_count | int) > 1
+
+- name: Unir el nodo
+  when: not (pve_is_first | bool) and not cluster_conf.stat.exists
+  block:
+    - name: Huella del certificado del primer nodo
+      ansible.builtin.command: pvenode cert info --output-format json
+      register: cluster_certs
+      delegate_to: "{{ pve_first_node }}"
+      changed_when: false
+      check_mode: false
+
+    - name: Huella
+      ansible.builtin.set_fact:
+        cluster_fingerprint: >-
+          {{ (cluster_certs.stdout | from_json | selectattr('filename', 'equalto', 'pve-ssl.pem') | first).fingerprint }}
+
+    - name: Join por la API
+      ansible.builtin.command: >-
+        pvesh create /cluster/config/join
+        --hostname {{ hostvars[pve_first_node].ansible_host }}
+        --fingerprint {{ cluster_fingerprint }}
+        --password {{ vault_root_password }}
+        {{ cluster_links }}
+      no_log: true
+      changed_when: true
+
+- name: Esperar al quorum
+  ansible.builtin.command: pvecm status
+  register: cluster_status
+  until: cluster_status.stdout is search('Quorate:\s+Yes')
+  retries: 30
+  delay: 10
+  changed_when: false
+  check_mode: false
+  when: (pve_node_count | int) > 1 and not ansible_check_mode

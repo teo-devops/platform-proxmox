@@ -1,0 +1,8 @@
+# EJEMPLO SIN CIFRAR. En tu entorno este fichero va cifrado:
+#   ansible-vault encrypt inventory/<entorno>/group_vars/all/vault.yml
+# Referencia: docs/inventario.md (secretos)
+
+# Hash de la contraseña de root: openssl passwd -6
+vault_root_password_hash: '$6$ejemplo$ESTO.NO.ES.UN.HASH.REAL.genera.el.tuyo.con.openssl.passwd.6'
+# Contraseña de root en claro: solo la usa el join al cluster (API de Proxmox)
+vault_root_password: ejemplo-no-usar

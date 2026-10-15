@@ -1,0 +1,9 @@
+# Ficheros generados (answer.toml con el hash de root, ISOs, interfaces, handoff)
+build/
+*.iso
+# Contraseña de ansible-vault (el vault va cifrado y si se sube; su contraseña, nunca)
+.vault-pass
+*.vault-pass
+# Editores
+.idea/
+.vscode/

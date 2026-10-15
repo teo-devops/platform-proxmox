@@ -1,0 +1,6 @@
+---
+- name: Aviso de reinicio
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}: sistema actualizado. Si ha entrado un kernel nuevo, reinicia el nodo
+      cuando no tenga VMs (docs/operaciones.md, actualizar). Este playbook no reinicia nada.

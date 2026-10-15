@@ -1,0 +1,87 @@
+---
+# Antes de cambiar nada: ¿el nodo es lo que dice el inventario? Sustituye a la
+# comprobacion de hardware por SSH de la instalacion manual (minimos, no valores
+# exactos: valen para cualquier servidor). Referencia: docs/postinstalacion.md
+
+- name: Proxmox VE instalado y de la version del inventario
+  ansible.builtin.command: pveversion
+  register: preflight_pveversion
+  changed_when: false
+
+- name: Version mayor de Proxmox
+  ansible.builtin.assert:
+    that: preflight_pveversion.stdout is search('pve-manager/' ~ pve.major ~ '\.')
+    fail_msg: "{{ inventory_hostname }}: {{ preflight_pveversion.stdout }}; el inventario dice pve.major {{ pve.major }}."
+
+- name: Debian de esa version de Proxmox
+  ansible.builtin.assert:
+    that: ansible_facts['distribution_release'] == pve_codename
+    fail_msg: "{{ inventory_hostname }}: Debian {{ ansible_facts['distribution_release'] }}, esperado {{ pve_codename }}."
+
+- name: El nombre del nodo es el del inventario
+  ansible.builtin.assert:
+    that: ansible_facts['hostname'] == inventory_hostname
+    fail_msg: >-
+      El nodo se llama {{ ansible_facts['hostname'] }} y en el inventario {{ inventory_hostname }}.
+      Proxmox identifica el nodo por su nombre: renombrar despues es delicado.
+
+# Proxmox exige que el nombre del nodo resuelva a su IP de gestion (no a 127.0.1.1):
+# si no, pve-cluster no arranca o el join falla de forma poco clara.
+- name: El nombre del nodo resuelve a su IP de gestion
+  ansible.builtin.command: hostname --ip-address
+  register: preflight_hostip
+  changed_when: false
+
+- name: Resolucion del nombre
+  ansible.builtin.assert:
+    that: ansible_host in preflight_hostip.stdout.split()
+    fail_msg: "{{ inventory_hostname }} resuelve a '{{ preflight_hostip.stdout }}'; tiene que ser {{ ansible_host }} (/etc/hosts)."
+
+- name: CPU con virtualizacion por hardware
+  ansible.builtin.command: grep -Ecm1 '(vmx|svm)' /proc/cpuinfo
+  register: preflight_virt
+  changed_when: false
+  failed_when: preflight_virt.stdout | int < 1
+
+- name: Minimos de hardware (pve_expect)
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['processor_nproc'] >= (pve_expect.cpu_threads | default(1))
+      - (ansible_facts['memtotal_mb'] / 1024) >= ((pve_expect.ram_gib | default(1)) - 2)
+    fail_msg: >-
+      {{ inventory_hostname }}: {{ ansible_facts['processor_nproc'] }} hilos y
+      {{ (ansible_facts['memtotal_mb'] / 1024) | round(1) }} GiB; el inventario espera al menos
+      {{ pve_expect.cpu_threads | default('-') }} hilos y {{ pve_expect.ram_gib | default('-') }} GiB.
+  when: pve_expect is defined
+
+- name: Los discos del inventario existen
+  ansible.builtin.assert:
+    that: item in ansible_facts['devices']
+    fail_msg: "{{ inventory_hostname }}: no hay ningun disco {{ item }}."
+  loop: "{{ pve_disks }}"
+
+- name: Capacidad de los discos (pve_expect.disk_gib, suma de pve_disks)
+  ansible.builtin.assert:
+    that: >-
+      (pve_disks | map('extract', ansible_facts['devices'])
+        | map(attribute='sectors') | map('int') | sum) * 512 / 1024 ** 3
+      >= (pve_expect.disk_gib - 5)
+    fail_msg: "{{ inventory_hostname }}: los discos suman menos de {{ pve_expect.disk_gib }} GiB."
+  when: pve_expect.disk_gib is defined
+
+- name: Enlace de las NIC fisicas
+  ansible.builtin.command: cat /sys/class/net/{{ item }}/operstate
+  register: preflight_link
+  changed_when: false
+  failed_when: preflight_link.rc != 0 or preflight_link.stdout != 'up'
+  loop: "{{ pve_bond.slaves if pve_bond is defined else [pve_nic] }}"
+
+- name: Hora sincronizada (corosync y TLS dependen de ella)
+  ansible.builtin.command: timedatectl show -p NTPSynchronized --value
+  register: preflight_ntp
+  changed_when: false
+
+- name: Aviso de hora
+  ansible.builtin.debug:
+    msg: "AVISO {{ inventory_hostname }}: la hora no esta sincronizada (chrony). Corrigelo antes de crear el cluster."
+  when: preflight_ntp.stdout != 'yes'

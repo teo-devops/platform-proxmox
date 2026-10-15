@@ -1,0 +1,56 @@
+---
+# De un Proxmox recien instalado a un cluster listo. Idempotente: se puede repetir.
+#   make plan  ENV=x    -> --check --diff (no cambia nada; la red enseña su diferencia)
+#   make apply ENV=x    -> aplica
+#   make validate ENV=x -> solo comprobaciones
+# Fases y tags: docs/postinstalacion.md
+
+- name: Inventario coherente
+  hosts: pve_nodes
+  gather_facts: false
+  tags: [always]
+  roles:
+    - topology
+
+- name: Nodos
+  hosts: pve_nodes
+  tags: [nodes]
+  roles:
+    - {role: preflight, tags: [preflight]}
+    - {role: repos, tags: [repos]}
+    - {role: zfs, tags: [zfs], when: pve_zfs | bool}
+
+- name: Red (nodo a nodo)
+  hosts: pve_nodes
+  serial: 1
+  tags: [network]
+  roles:
+    - network
+
+- name: Cluster (el primero lo crea; el resto se une en orden)
+  hosts: pve_nodes
+  serial: 1
+  tags: [cluster]
+  roles:
+    - cluster
+
+- name: QDevice (numero par de nodos)
+  hosts: pve_nodes
+  tags: [cluster, qdevice]
+  roles:
+    - {role: qdevice, when: pve_use_qdevice | bool}
+
+- name: Datacenter (una vez, desde el primer nodo)
+  hosts: pve_nodes[0]
+  tags: [datacenter]
+  roles:
+    - {role: storage, tags: [storage]}
+    - {role: access, tags: [access]}
+    - {role: replication, tags: [replication], when: replication.enabled | default(false) | bool}
+    - {role: backup, tags: [backup], when: (backup.pbs | default(none)) is not none}
+
+- name: Validacion
+  hosts: pve_nodes
+  tags: [validate]
+  roles:
+    - validate

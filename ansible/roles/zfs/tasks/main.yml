@@ -1,0 +1,30 @@
+---
+# Limite del ARC de ZFS: el cache compite con las VMs por la RAM. `auto` es lo mismo
+# que hace el instalador desde PVE 8.1: el 10 % de la RAM, con un maximo de 16 GiB.
+# Se aplica en caliente y queda fijo para los reinicios. Referencia: docs/dimensionamiento.md
+
+- name: Tamaño del ARC
+  ansible.builtin.set_fact:
+    zfs_arc_bytes: >-
+      {{ ([(ansible_facts['memtotal_mb'] * 1024 * 1024 * 0.10) | int, 16 * 1024 ** 3] | min)
+         if pve.zfs_arc_max_mib | default('auto') == 'auto'
+         else (pve.zfs_arc_max_mib | int) * 1024 * 1024 }}
+
+- name: ARC para los siguientes arranques
+  ansible.builtin.copy:
+    dest: /etc/modprobe.d/zfs.conf
+    mode: "0644"
+    content: |
+      # Gestionado por platform-proxmox (roles/zfs). No editar a mano.
+      options zfs zfs_arc_max={{ zfs_arc_bytes }}
+  notify: Regenerar initramfs
+
+- name: ARC actual
+  ansible.builtin.slurp:
+    src: /sys/module/zfs/parameters/zfs_arc_max
+  register: zfs_arc_now
+
+- name: ARC en caliente
+  ansible.builtin.shell: echo {{ zfs_arc_bytes }} > /sys/module/zfs/parameters/zfs_arc_max
+  changed_when: true
+  when: (zfs_arc_now.content | b64decode | trim | int) != (zfs_arc_bytes | int)

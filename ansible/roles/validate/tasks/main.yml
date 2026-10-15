@@ -1,0 +1,75 @@
+---
+# Comprobacion final (`make validate`): sustituye a los tests manuales de quorum,
+# ZFS, red, repos y servicios. No cambia nada. Referencia: docs/postinstalacion.md
+
+- name: Servicios
+  ansible.builtin.service_facts:
+
+- name: Servicios de Proxmox activos
+  ansible.builtin.assert:
+    that: ansible_facts['services'][item ~ '.service'].state | default('') == 'running'
+    fail_msg: "{{ inventory_hostname }}: {{ item }} no esta en marcha."
+  loop: [pve-cluster, pvedaemon, pveproxy, pvestatd]
+
+# Comando y no el modulo apt: hace falta su salida para distinguir un 401 (repo
+# enterprise sin suscripcion) de otros errores.
+- name: Repos sin errores (un 401 = repo enterprise sin suscripcion)
+  ansible.builtin.command: apt-get update  # noqa: command-instead-of-module
+  register: validate_apt
+  changed_when: false
+  failed_when: validate_apt.rc != 0 or validate_apt.stdout is search('401') or validate_apt.stderr is search('401')
+
+- name: Bridge activo con su interfaz
+  ansible.builtin.command: ip -o link show master {{ network.bridge }}
+  register: validate_bridge
+  changed_when: false
+  failed_when: validate_bridge.stdout is not search(' ' ~ pve_nic ~ '[:@]')
+
+- name: ZFS sano
+  ansible.builtin.command: zpool status -x
+  register: validate_zpool
+  changed_when: false
+  failed_when: validate_zpool.stdout is not search('all pools are healthy')
+  when: pve_zfs | bool
+
+- name: Estado del cluster
+  ansible.builtin.command: pvecm status
+  register: validate_pvecm
+  changed_when: false
+  when: (pve_node_count | int) > 1
+
+- name: Quorum y votos esperados
+  ansible.builtin.assert:
+    that:
+      - validate_pvecm.stdout is search('Quorate:\s+Yes')
+      - >-
+        (validate_pvecm.stdout | regex_search('Total votes:\s+(\d+)', '\1') | first | int)
+        == (pve_node_count | int) + (1 if pve_use_qdevice | bool else 0)
+    fail_msg: >-
+      Esperados {{ pve_node_count }} nodos{{ ' + QDevice' if pve_use_qdevice | bool else '' }} y quorum.
+      {{ validate_pvecm.stdout }}
+  when: (pve_node_count | int) > 1
+
+# `pvecm status` solo lista el nodo local en su seccion de quorum: para contar
+# miembros, `pvecm nodes`.
+- name: Miembros del cluster
+  ansible.builtin.command: pvecm nodes
+  register: validate_nodes
+  changed_when: false
+  failed_when: >-
+    validate_nodes.stdout_lines | select('match', '^\s+\d+\s+\d+\s') | list | length != (pve_node_count | int)
+  when: (pve_node_count | int) > 1
+
+- name: Contenido import en el storage de imagenes
+  ansible.builtin.command: pvesh get /storage/{{ storage.image_datastore }} --output-format json
+  register: validate_storage
+  changed_when: false
+  failed_when: "'import' not in (validate_storage.stdout | from_json).content.split(',')"
+  run_once: true
+  when: storage.enable_import_content | default(true) | bool
+
+- name: Resumen
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}: servicios, repos, red{{ ', ZFS' if pve_zfs | bool else '' }}{{
+      ', cluster' if (pve_node_count | int) > 1 else '' }} OK

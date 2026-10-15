@@ -1,0 +1,35 @@
+---
+# Genera en build/<ENV>/ lo que no se aplica por SSH: el answer.toml de cada nodo
+# (instalador desatendido) y su /etc/network/interfaces. No conecta con los nodos.
+#   make answers ENV=x      (y el CI, con los ejemplos, contra tests/golden/)
+- name: Ficheros generados
+  hosts: pve_nodes
+  gather_facts: false
+  connection: local
+  vars:
+    render_dir: "{{ playbook_dir }}/../../build/{{ render_env }}"
+  roles:
+    - topology
+  tasks:
+    - name: Directorios
+      ansible.builtin.file:
+        path: "{{ render_dir }}/{{ item }}"
+        state: directory
+        mode: "0700"
+      loop: [answers, interfaces]
+      run_once: true
+      delegate_to: localhost
+
+    - name: answer.toml del nodo
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../../install/answer.toml.j2"
+        dest: "{{ render_dir }}/answers/{{ inventory_hostname }}.toml"
+        mode: "0600"
+      delegate_to: localhost
+
+    - name: interfaces del nodo
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../roles/network/templates/interfaces.j2"
+        dest: "{{ render_dir }}/interfaces/{{ inventory_hostname }}"
+        mode: "0644"
+      delegate_to: localhost

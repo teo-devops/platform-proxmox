@@ -1,0 +1,58 @@
+# Referencia de cada campo: docs/inventario.md
+cluster:
+  name: prod-pve
+  domain: pve.example.internal
+  corosync_link1_cidr_bits: 24   # red dedicada de corosync (pve_corosync_link1 en cada nodo)
+
+pve:
+  major: 9
+  repo: enterprise               # con suscripcion: el repo enterprise
+  upgrade: true
+  filesystem: zfs
+  zfs_ashift: 12
+  zfs_compress: lz4
+  zfs_arc_max_mib: auto
+
+network:
+  cidr_bits: 24
+  gateway: 10.30.0.1
+  dns: [10.30.0.2, 10.30.0.3]
+  bridge: vmbr0
+  vlan_aware: true               # las VMs pueden ir en VLAN distintas
+  vlan_ids: "2-4094"
+  mtu: 1500
+  apply: false
+
+install:
+  keyboard: es
+  country: es
+  timezone: Europe/Madrid
+  mailto: infra@example.com
+  root_password_hash: "{{ vault_root_password_hash }}"
+  root_ssh_keys:
+    - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleExampleExampleExampleExampleEx admin"
+
+access:
+  admins:
+    - {user: ana, comment: Infraestructura}
+    - {user: luis, comment: Infraestructura}
+  pools: [proj-erp, proj-web, proj-datos]
+
+storage:
+  image_datastore: local
+  enable_import_content: true
+
+replication:
+  enabled: false
+
+# Copias a un Proxmox Backup Server ya montado (docs/postinstalacion.md, backups).
+backup:
+  pbs:
+    storage_id: pbs-platform
+    server: 10.30.0.40
+    datastore: platform
+    username: "pve@pbs!backup"
+    password: "{{ vault_pbs_token_secret }}"
+    fingerprint: "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99"
+    encryption: true
+    job: {id: platform-diario, schedule: "02:30", exclude: []}

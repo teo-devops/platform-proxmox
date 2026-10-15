@@ -1,0 +1,12 @@
+# PRs con las versiones nuevas de las actions (fijadas por SHA) y de la imagen del
+# validador. Nada se actualiza solo: cada subida es un PR.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: {interval: weekly}
+    cooldown: {default-days: 14}
+  - package-ecosystem: docker
+    directory: /install
+    schedule: {interval: weekly}
+    cooldown: {default-days: 14}

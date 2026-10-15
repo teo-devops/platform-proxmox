@@ -1,0 +1,51 @@
+# Configuracion comun del entorno. Referencia de cada campo: docs/inventario.md
+# Secretos (hash de la contraseña de root, contraseña para el join): en un fichero
+# cifrado con ansible-vault (group_vars/all/vault.yml), nunca aqui en claro.
+
+cluster:
+  name: lab-pve                  # maximo 15 caracteres (limite de corosync)
+  domain: lab.example.internal   # FQDN de cada nodo: <nombre>.<domain>
+  # Con un numero PAR de nodos, si cae la mitad se pierde el quorum. Un QDevice en
+  # una tercera maquina (una Raspberry Pi vale) aporta el voto que falta.
+  qdevice_host: 192.168.10.5
+  accept_no_quorum_on_failure: false
+
+pve:
+  major: 9                       # 8 (bookworm) o 9 (trixie)
+  repo: no-subscription          # no-subscription | enterprise
+  upgrade: true                  # apt full-upgrade en la post-instalacion
+  filesystem: zfs                # zfs | ext4 | xfs
+  zfs_ashift: 12
+  zfs_compress: lz4
+  zfs_arc_max_mib: auto          # auto = min(10 % de la RAM, 16 GiB), o un numero en MiB
+
+network:
+  cidr_bits: 24
+  gateway: 192.168.10.1
+  dns: [192.168.10.1]
+  bridge: vmbr0
+  vlan_aware: false
+  apply: false                   # la red solo se aplica con true (docs/postinstalacion.md)
+
+install:
+  keyboard: es
+  country: es
+  timezone: Europe/Madrid
+  mailto: admin@example.com
+  root_password_hash: "{{ vault_root_password_hash }}"
+  root_ssh_keys:
+    - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleExampleExampleExampleExampleEx admin"
+
+access:
+  admins:
+    - {user: admin, comment: Administrador de la plataforma}
+
+storage:
+  image_datastore: local
+  enable_import_content: true    # lo necesita pve-platform-iac (imagenes por API)
+
+replication:
+  enabled: false
+
+backup:
+  pbs: null

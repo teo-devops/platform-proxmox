@@ -1,0 +1,8 @@
+profile: production
+exclude_paths:
+  - build/
+  - examples/
+  - .github/
+skip_list:
+  - name[casing]          # nombres de tareas en español, en minuscula a veces
+  - command-instead-of-shell

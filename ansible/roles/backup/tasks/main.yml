@@ -1,0 +1,47 @@
+---
+# Copias a un Proxmox Backup Server ya montado (el servidor y su datastore S3 se
+# describen en docs/postinstalacion.md, backups). Aqui: el storage de PBS en Proxmox
+# VE, cifrado en el cliente, y el trabajo diario. Una vez (run_once).
+
+- name: Storages existentes
+  ansible.builtin.command: pvesh get /storage --output-format json
+  register: backup_storages
+  changed_when: false
+  check_mode: false
+
+- name: Añadir PBS como storage
+  ansible.builtin.command: >-
+    pvesm add pbs {{ backup.pbs.storage_id }}
+    --server {{ backup.pbs.server }} --datastore {{ backup.pbs.datastore }}
+    --username '{{ backup.pbs.username }}' --password '{{ backup.pbs.password }}'
+    --fingerprint {{ backup.pbs.fingerprint }}
+    {% if backup.pbs.encryption | default(true) %} --encryption-key autogen{% endif %}
+  no_log: true
+  changed_when: true
+  register: backup_added
+  when: backup.pbs.storage_id not in (backup_storages.stdout | from_json | map(attribute='storage') | list)
+
+- name: Guarda la clave de cifrado FUERA de la infraestructura
+  ansible.builtin.debug:
+    msg: >-
+      IMPORTANTE: sin /etc/pve/priv/storage/{{ backup.pbs.storage_id }}.enc no se puede restaurar
+      ninguna copia, y vive en el mismo cluster que protege. Copia su contenido a tu gestor de
+      contraseñas ahora: cat /etc/pve/priv/storage/{{ backup.pbs.storage_id }}.enc
+  when: backup_added is changed and (backup.pbs.encryption | default(true))
+
+- name: Trabajos de copia existentes
+  ansible.builtin.command: pvesh get /cluster/backup --output-format json
+  register: backup_jobs
+  changed_when: false
+  check_mode: false
+  when: backup.pbs.job is defined
+
+- name: Trabajo de copia
+  ansible.builtin.command: >-
+    pvesh create /cluster/backup --id {{ backup.pbs.job.id }} --schedule '{{ backup.pbs.job.schedule }}'
+    --storage {{ backup.pbs.storage_id }} --all 1 --mode snapshot --notes-template '{{ "{{" }}guestname{{ "}}" }}'
+    {% if backup.pbs.job.exclude | default([]) %} --exclude {{ backup.pbs.job.exclude | join(',') }}{% endif %}
+  changed_when: true
+  when:
+    - backup.pbs.job is defined
+    - backup.pbs.job.id not in (backup_jobs.stdout | from_json | map(attribute='id') | list)

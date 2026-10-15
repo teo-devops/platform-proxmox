@@ -1,0 +1,59 @@
+# ci.yml — validaciones sin hardware ni secretos, en runners de GitHub.
+#   lint     yamllint, ansible-lint (perfil production), shellcheck, esquemas y
+#            --syntax-check con los inventarios de ejemplo (2, 3 y 5 nodos)
+#   render   genera answer.toml e interfaces de los ejemplos y los compara con
+#            tests/golden/ (detecta regresiones sin servidores); valida cada answer.toml
+#            con proxmox-auto-install-assistant, el validador oficial de Proxmox
+#   secrets  gitleaks sobre todo el historial
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with: {python-version: "3.13"}
+      - run: pip install --quiet ansible-core==2.21.4 ansible-lint==26.9.0 yamllint==1.38.0 check-jsonschema==0.38.2
+      - run: make lint
+
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with: {python-version: "3.13"}
+      - run: pip install --quiet ansible-core==2.21.4
+      - name: Ejemplos iguales a tests/golden
+        run: make test
+      - name: Validador oficial de answer.toml
+        run: |
+          docker build -q -t platform-proxmox-assistant -f install/Dockerfile.assistant install/
+          for f in build/*/answers/*.toml; do
+            echo "== $f"
+            docker run --rm -v "$PWD/build:/work/build:ro" platform-proxmox-assistant validate-answer "$f"
+          done
+
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {fetch-depth: 0, persist-credentials: false}
+      - run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.28.0 git --redact -v /repo

@@ -1,0 +1,100 @@
+---
+# Red del nodo: bridge de las VMs (con bond y VLAN opcionales) y red dedicada de
+# corosync. Un error aqui deja el nodo SIN ACCESO, asi que:
+#   - por defecto solo se genera la configuracion candidata y se enseña la diferencia;
+#   - aplicarla exige network.apply: true, va nodo a nodo (serial: 1 en site.yml) y
+#     arma ANTES una vuelta atras automatica: si en 3 minutos Ansible no confirma que
+#     el nodo sigue accesible, el propio nodo restaura la copia y recarga la red.
+# Referencia: docs/postinstalacion.md (red)
+
+# La candidata se escribe tambien en `make plan` (--check): es un fichero aparte, no la
+# configuracion viva, y asi el plan enseña la diferencia real.
+- name: Configuracion candidata
+  ansible.builtin.template:
+    src: interfaces.j2
+    dest: /etc/network/interfaces.platform
+    mode: "0644"
+  check_mode: false
+
+- name: Diferencia con la actual
+  ansible.builtin.command: diff -u /etc/network/interfaces /etc/network/interfaces.platform
+  register: network_diff
+  changed_when: false
+  failed_when: network_diff.rc > 1
+  check_mode: false
+
+- name: Cambios de red pendientes
+  ansible.builtin.debug:
+    msg: "{{ network_diff.stdout_lines }}"
+  when: network_diff.rc == 1
+
+- name: Aviso (network.apply false)
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}: la red tiene cambios pendientes y NO se aplican (network.apply: false).
+      Revisa la diferencia y, con consola fuera de banda a mano, repite con network.apply: true.
+  when: network_diff.rc == 1 and not (network.apply | default(false) | bool)
+
+- name: Aplicar la red con vuelta atras automatica
+  when: network_diff.rc == 1 and (network.apply | default(false) | bool)
+  block:
+    - name: Copia de la configuracion actual
+      ansible.builtin.copy:
+        src: /etc/network/interfaces
+        dest: /etc/network/interfaces.platform-bak
+        remote_src: true
+        mode: "0644"
+
+    - name: Armar la vuelta atras (3 minutos)
+      ansible.builtin.command: >-
+        systemd-run --unit=platform-net-rollback --on-active=180
+        /bin/sh -c 'cp -a /etc/network/interfaces.platform-bak /etc/network/interfaces && ifreload -a'
+      changed_when: true
+
+    - name: Instalar la configuracion nueva
+      ansible.builtin.copy:
+        src: /etc/network/interfaces.platform
+        dest: /etc/network/interfaces
+        remote_src: true
+        mode: "0644"
+
+    - name: Recargar la red
+      ansible.builtin.command: ifreload -a
+      async: 60
+      poll: 0
+      changed_when: true
+
+    - name: El nodo sigue accesible
+      ansible.builtin.wait_for_connection:
+        delay: 10
+        timeout: 90
+
+    - name: Confirmar (desarmar la vuelta atras)
+      ansible.builtin.systemd_service:
+        name: platform-net-rollback.timer
+        state: stopped
+
+  rescue:
+    - name: La red nueva ha fallado
+      ansible.builtin.fail:
+        msg: >-
+          {{ inventory_hostname }} no responde tras aplicar la red. En 3 minutos el nodo restaura
+          /etc/network/interfaces.platform-bak por si solo. Si no vuelve, entra por la consola fuera
+          de banda (docs/operaciones.md, red).
+
+- name: DNS actual del nodo
+  ansible.builtin.command: pvesh get /nodes/{{ inventory_hostname }}/dns --output-format json
+  register: network_dns_now
+  changed_when: false
+  check_mode: false
+
+- name: DNS del nodo
+  ansible.builtin.command: >-
+    pvesh set /nodes/{{ inventory_hostname }}/dns --search {{ cluster.domain }}
+    {% for d in network.dns[:3] %} --dns{{ loop.index }} {{ d }}{% endfor %}
+  changed_when: true
+  when: >-
+    (network_dns_now.stdout | from_json).search | default('') != cluster.domain
+    or [(network_dns_now.stdout | from_json).dns1 | default(''),
+        (network_dns_now.stdout | from_json).dns2 | default(''),
+        (network_dns_now.stdout | from_json).dns3 | default('')] | select | list != network.dns[:3]

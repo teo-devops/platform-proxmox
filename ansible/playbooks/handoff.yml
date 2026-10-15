@@ -1,0 +1,34 @@
+---
+# Paso a pve-platform-iac: el bloque `proxmox:` de su platform.yaml, sacado del
+# inventario. No conecta con los nodos. Referencia: docs/integracion-iac.md
+- name: Handoff a pve-platform-iac
+  hosts: pve_nodes[0]
+  gather_facts: false
+  connection: local
+  tasks:
+    - name: Bloque proxmox de platform.yaml
+      ansible.builtin.copy:
+        dest: "{{ playbook_dir }}/../../build/{{ render_env }}/platform.yaml-proxmox.yaml"
+        mode: "0644"
+        content: |
+          # Generado por `make handoff ENV={{ render_env }}` (platform-proxmox). Pegalo en el
+          # platform.yaml de pve-platform-iac (docs/bootstrap.md §2) y sigue con su §3 (CA).
+          proxmox:
+            # La IP del primer nodo siempre esta en el SAN de su certificado (pve-ssl.pem).
+            endpoint: https://{{ ansible_host }}:8006/
+            nodes:
+          {% for n in groups['pve_nodes'] %}
+              {{ n }}: {{ hostvars[n].ansible_host }}
+          {% endfor %}
+            datastore: {{ pve_vm_datastore }}
+            image_datastore: {{ storage.image_datastore }}
+            bridge: {{ network.bridge }}
+            vlan_tag: null
+            sdn_zone: localnetwork
+          # CA del cluster para pve-platform-iac (terraform/certs/pve-root-ca.pem):
+          #   scp root@{{ ansible_host }}:/etc/pve/pve-root-ca.pem terraform/certs/pve-root-ca.pem
+      delegate_to: localhost
+
+    - name: Resultado
+      ansible.builtin.debug:
+        msg: "build/{{ render_env }}/platform.yaml-proxmox.yaml"

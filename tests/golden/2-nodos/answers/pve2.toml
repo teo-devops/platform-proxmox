@@ -1,0 +1,31 @@
+# answer.toml del instalador desatendido de Proxmox VE para pve2.
+# Generado por `make answers ENV=...` desde el inventario: no lo edites, cambia el
+# inventario. Contiene el HASH de la contraseña de root: no lo subas al repo
+# (build/ esta en .gitignore). Formato: https://pve.proxmox.com/wiki/Automated_Installation
+
+[global]
+keyboard = "es"
+country = "es"
+fqdn = "pve2.lab.example.internal"
+mailto = "admin@example.com"
+timezone = "Europe/Madrid"
+root-password-hashed = "$6$ejemplo$ESTO.NO.ES.UN.HASH.REAL.genera.el.tuyo.con.openssl.passwd.6"
+root-ssh-keys = [
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleExampleExampleExampleExampleEx admin",
+]
+reboot-on-error = false
+
+[network]
+source = "from-answer"
+cidr = "192.168.10.12/24"
+dns = "192.168.10.1"
+gateway = "192.168.10.1"
+# La NIC de gestion, por su MAC (con varias NIC, el instalador podria elegir otra).
+filter.ID_NET_NAME_MAC = "*aabbcc000012"
+
+[disk-setup]
+filesystem = "zfs"
+disk-list = ["nvme0n1"]
+zfs.raid = "raid0"
+zfs.ashift = 12
+zfs.compress = "lz4"

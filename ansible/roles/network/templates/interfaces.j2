@@ -1,0 +1,47 @@
+# Gestionado por platform-proxmox (roles/network). Los cambios hechos a mano o desde
+# la UI se pierden en el siguiente `make apply`: cambia el inventario.
+# Nodo {{ inventory_hostname }} ({{ pve_fqdn }})
+
+auto lo
+iface lo inet loopback
+
+{% if pve_bond is defined %}
+{% for slave in pve_bond.slaves %}
+iface {{ slave }} inet manual
+{% endfor %}
+
+auto {{ pve_nic }}
+iface {{ pve_nic }} inet manual
+    bond-slaves {{ pve_bond.slaves | join(' ') }}
+    bond-miimon 100
+    bond-mode {{ pve_bond.mode | default('active-backup') }}
+{% if (pve_bond.mode | default('active-backup')) == '802.3ad' %}
+    bond-xmit-hash-policy layer3+4
+{% endif %}
+{% else %}
+iface {{ pve_nic }} inet manual
+{% endif %}
+
+auto {{ network.bridge }}
+iface {{ network.bridge }} inet static
+    address {{ ansible_host }}/{{ network.cidr_bits }}
+    gateway {{ network.gateway }}
+    bridge-ports {{ pve_nic }}
+    bridge-stp off
+    bridge-fd 0
+{% if network.vlan_aware | default(false) %}
+    bridge-vlan-aware yes
+    bridge-vids {{ network.vlan_ids | default('2-4094') }}
+{% endif %}
+{% if network.mtu is defined %}
+    mtu {{ network.mtu }}
+{% endif %}
+{% if pve_corosync_link1 is defined %}
+
+# Red dedicada de corosync (link1)
+auto {{ pve_corosync_link1.nic }}
+iface {{ pve_corosync_link1.nic }} inet static
+    address {{ pve_corosync_link1.ip }}/{{ cluster.corosync_link1_cidr_bits | default(24) }}
+{% endif %}
+
+source /etc/network/interfaces.d/*

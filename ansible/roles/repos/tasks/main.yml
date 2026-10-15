@@ -1,0 +1,70 @@
+---
+# Repositorios de Proxmox y actualizacion. Sin suscripcion, los repos enterprise
+# hacen fallar `apt update` con un 401; con suscripcion se dejan como estan.
+# PVE 9 (trixie) usa ficheros deb822 (.sources); PVE 8 (bookworm), .list.
+# Ceph no se usa en esta version (docs/arquitectura.md): su repo se desactiva siempre.
+
+- name: Repos deb822 (PVE 9)
+  when: pve_codename == 'trixie'
+  block:
+    - name: Ficheros enterprise que hay que desactivar
+      ansible.builtin.stat:
+        path: "/etc/apt/sources.list.d/{{ item }}"
+      register: repos_enterprise
+      loop: "{{ (['pve-enterprise.sources'] if pve.repo == 'no-subscription' else []) + ['ceph.sources'] }}"
+
+    # En deb822 una linea en blanco separa entradas: `Enabled: false` va pegado al
+    # final, sin linea en blanco delante, o apt ve una entrada vacia y falla.
+    - name: Desactivar repos enterprise (Enabled false)
+      ansible.builtin.shell: |
+        set -e
+        f=/etc/apt/sources.list.d/{{ item.item }}
+        if grep -qi '^Enabled: *false' "$f"; then echo ya; exit 0; fi
+        [ -n "$(tail -c1 "$f")" ] && printf '\n' >> "$f"
+        printf 'Enabled: false\n' >> "$f"
+      register: repos_disable
+      changed_when: repos_disable.stdout != 'ya'
+      loop: "{{ repos_enterprise.results | selectattr('stat.exists') | list }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Repo sin suscripcion (deb822)
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/pve-no-subscription.sources
+        mode: "0644"
+        content: |
+          Types: deb
+          URIs: http://download.proxmox.com/debian/pve
+          Suites: {{ pve_codename }}
+          Components: pve-no-subscription
+          Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
+      when: pve.repo == 'no-subscription'
+
+- name: Repos .list (PVE 8)
+  when: pve_codename == 'bookworm'
+  block:
+    - name: Comentar repos enterprise
+      ansible.builtin.replace:
+        path: "/etc/apt/sources.list.d/{{ item }}"
+        regexp: '^deb '
+        replace: '# deb '
+      failed_when: false
+      loop: "{{ (['pve-enterprise.list'] if pve.repo == 'no-subscription' else []) + ['ceph.list'] }}"
+
+    - name: Repo sin suscripcion (.list)
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/pve-no-subscription.list
+        mode: "0644"
+        content: "deb http://download.proxmox.com/debian/pve {{ pve_codename }} pve-no-subscription\n"
+      when: pve.repo == 'no-subscription'
+
+- name: Actualizar los indices (un 401 aqui = repo enterprise sin suscripcion)
+  ansible.builtin.apt:
+    update_cache: true
+  changed_when: false
+
+- name: Actualizar el sistema
+  ansible.builtin.apt:
+    upgrade: dist
+  when: pve.upgrade | default(true) | bool
+  notify: Aviso de reinicio

@@ -1,0 +1,26 @@
+---
+# QDevice: un voto externo para clusters con un numero par de nodos. La tercera
+# maquina (cluster.qdevice_host) se prepara a mano, una vez:
+#   apt install corosync-qnetd        # en la maquina del QDevice
+#   y la clave publica de root del primer nodo en su /root/.ssh/authorized_keys
+# (`pvecm qdevice setup` entra por SSH como root). Referencia: docs/arquitectura.md
+
+- name: Paquete del QDevice en los nodos
+  ansible.builtin.apt:
+    name: corosync-qdevice
+    state: present
+
+- name: ¿QDevice ya configurado?
+  ansible.builtin.command: pvecm status
+  register: qdevice_status
+  changed_when: false
+  check_mode: false
+  run_once: true
+  delegate_to: "{{ pve_first_node }}"
+
+- name: Configurar el QDevice
+  ansible.builtin.command: pvecm qdevice setup {{ cluster.qdevice_host }}
+  changed_when: true
+  run_once: true
+  delegate_to: "{{ pve_first_node }}"
+  when: qdevice_status.stdout is not search('Qdevice')

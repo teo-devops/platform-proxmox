@@ -1,0 +1,20 @@
+---
+# Almacenamiento del datacenter. /etc/pve se replica entre nodos: se hace una vez,
+# desde el primer nodo (run_once en site.yml).
+# El contenido `import` deja que pve-platform-iac importe la imagen base de las VMs
+# por la API, sin SSH a los nodos. No viene activado por defecto.
+
+- name: Contenidos del storage de imagenes
+  ansible.builtin.command: pvesh get /storage/{{ storage.image_datastore }} --output-format json
+  register: storage_cfg
+  changed_when: false
+  check_mode: false
+
+- name: Activar el contenido import (sin quitar ninguno)
+  ansible.builtin.command: >-
+    pvesm set {{ storage.image_datastore }}
+    --content {{ ((storage_cfg.stdout | from_json).content.split(',') + ['import']) | unique | join(',') }}
+  changed_when: true
+  when:
+    - storage.enable_import_content | default(true) | bool
+    - "'import' not in (storage_cfg.stdout | from_json).content.split(',')"

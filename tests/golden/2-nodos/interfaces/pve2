@@ -1,0 +1,18 @@
+# Gestionado por platform-proxmox (roles/network). Los cambios hechos a mano o desde
+# la UI se pierden en el siguiente `make apply`: cambia el inventario.
+# Nodo pve2 (pve2.lab.example.internal)
+
+auto lo
+iface lo inet loopback
+
+iface nic0 inet manual
+
+auto vmbr0
+iface vmbr0 inet static
+    address 192.168.10.12/24
+    gateway 192.168.10.1
+    bridge-ports nic0
+    bridge-stp off
+    bridge-fd 0
+
+source /etc/network/interfaces.d/*

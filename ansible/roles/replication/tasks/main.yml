@@ -1,0 +1,37 @@
+---
+# Replicacion nativa de Proxmox (pvesr): copias ZFS incrementales de una VM a otro
+# nodo cada `schedule`. No es alta disponibilidad: ante la caida del nodo se pierde
+# como mucho un intervalo. Solo con ZFS en origen y destino. Una vez (run_once).
+# Referencia: docs/arquitectura.md (resiliencia)
+
+- name: VMs del cluster
+  ansible.builtin.command: pvesh get /cluster/resources --type vm --output-format json
+  register: replication_vms
+  changed_when: false
+  check_mode: false
+
+- name: Trabajos existentes
+  ansible.builtin.command: pvesr list --output-format json
+  register: replication_jobs
+  changed_when: false
+  check_mode: false
+
+- name: Crear trabajos de replicacion
+  ansible.builtin.command: >-
+    pvesr create-local-job {{ item.vmid }}-0 {{ item.target }}
+    --schedule '{{ item.schedule | default(replication.schedule | default('*/15')) }}'
+  changed_when: true
+  loop: "{{ replication.jobs | default([]) }}"
+  loop_control:
+    label: "VM {{ item.vmid }} -> {{ item.target }}"
+  when:
+    - (item.vmid ~ '-0') not in (replication_jobs.stdout | from_json | map(attribute='id') | list)
+    - item.vmid in (replication_vms.stdout | from_json | map(attribute='vmid') | list)
+
+- name: VMs que aun no existen
+  ansible.builtin.debug:
+    msg: "La VM {{ item.vmid }} no existe todavia: su replicacion se creara en la siguiente ejecucion."
+  loop: "{{ replication.jobs | default([]) }}"
+  loop_control:
+    label: "{{ item.vmid }}"
+  when: item.vmid not in (replication_vms.stdout | from_json | map(attribute='vmid') | list)

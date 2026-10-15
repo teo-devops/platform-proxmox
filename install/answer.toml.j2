@@ -1,0 +1,42 @@
+# answer.toml del instalador desatendido de Proxmox VE para {{ inventory_hostname }}.
+# Generado por `make answers ENV=...` desde el inventario: no lo edites, cambia el
+# inventario. Contiene el HASH de la contraseña de root: no lo subas al repo
+# (build/ esta en .gitignore). Formato: https://pve.proxmox.com/wiki/Automated_Installation
+
+[global]
+keyboard = "{{ install.keyboard }}"
+country = "{{ install.country }}"
+fqdn = "{{ pve_fqdn }}"
+mailto = "{{ install.mailto }}"
+timezone = "{{ install.timezone }}"
+root-password-hashed = "{{ install.root_password_hash }}"
+{% if install.root_ssh_keys | default([]) %}
+root-ssh-keys = [
+{% for k in install.root_ssh_keys %}
+    "{{ k }}",
+{% endfor %}
+]
+{% endif %}
+reboot-on-error = false
+
+[network]
+source = "from-answer"
+cidr = "{{ ansible_host }}/{{ network.cidr_bits }}"
+dns = "{{ network.dns[0] }}"
+gateway = "{{ network.gateway }}"
+{% if pve_mac is defined %}
+# La NIC de gestion, por su MAC (con varias NIC, el instalador podria elegir otra).
+filter.ID_NET_NAME_MAC = "*{{ pve_mac | replace(':', '') | lower }}"
+{% endif %}
+
+[disk-setup]
+filesystem = "{{ pve.filesystem }}"
+disk-list = [{% for d in pve_disks %}"{{ d }}"{{ ", " if not loop.last else "" }}{% endfor %}]
+{% if pve_zfs | bool %}
+zfs.raid = "{{ pve_zfs_raid_effective }}"
+zfs.ashift = {{ pve.zfs_ashift | default(12) }}
+zfs.compress = "{{ pve.zfs_compress | default('lz4') }}"
+{% if pve.zfs_arc_max_mib | default('auto') != 'auto' %}
+zfs.arc-max = {{ pve.zfs_arc_max_mib }}
+{% endif %}
+{% endif %}

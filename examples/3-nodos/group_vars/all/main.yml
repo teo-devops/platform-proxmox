@@ -1,0 +1,49 @@
+# Referencia de cada campo: docs/inventario.md
+cluster:
+  name: dev-pve
+  domain: dev.example.internal
+
+pve:
+  major: 9
+  repo: no-subscription
+  upgrade: true
+  filesystem: zfs
+  zfs_ashift: 12
+  zfs_compress: lz4
+  zfs_arc_max_mib: 6144          # fijo: 6 GiB por nodo
+
+network:
+  cidr_bits: 24
+  gateway: 10.20.0.1
+  dns: [1.1.1.1, 9.9.9.9]        # la puerta de enlace no sirve DNS en esta red
+  bridge: vmbr0
+  vlan_aware: false
+  apply: false
+
+install:
+  keyboard: es
+  country: es
+  timezone: Europe/Madrid
+  mailto: infra@example.com
+  root_password_hash: "{{ vault_root_password_hash }}"
+  root_ssh_keys:
+    - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleExampleExampleExampleExampleEx admin"
+
+access:
+  admins:
+    - {user: admin, comment: Administrador de la plataforma}
+  pools: [proj-equipo-a, proj-equipo-b]
+
+storage:
+  image_datastore: local
+  enable_import_content: true
+
+# Replicacion nativa de ZFS (pvesr) de VMs criticas al nodo vecino.
+replication:
+  enabled: true
+  schedule: "*/15"
+  jobs:
+    - {vmid: 100, target: pve2}
+
+backup:
+  pbs: null

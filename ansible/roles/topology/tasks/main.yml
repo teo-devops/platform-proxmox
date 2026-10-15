@@ -1,0 +1,56 @@
+---
+# Comprobaciones del inventario que no necesitan conectar con los nodos. Corren en
+# cada ejecucion (tag always) y en `make check`. Referencia: docs/arquitectura.md
+
+- name: El nombre del cluster cabe en corosync (15 caracteres)
+  ansible.builtin.assert:
+    that: cluster.name | length <= 15
+    fail_msg: "cluster.name '{{ cluster.name }}' tiene {{ cluster.name | length }} caracteres; corosync admite 15."
+  run_once: true
+
+- name: Con un numero par de nodos hace falta QDevice (o aceptarlo de forma explicita)
+  ansible.builtin.assert:
+    that: >-
+      not (pve_needs_qdevice | bool)
+      or (cluster.qdevice_host | default(none)) is not none
+      or (cluster.accept_no_quorum_on_failure | default(false) | bool)
+    fail_msg: >-
+      {{ pve_node_count }} nodos: si cae la mitad, el resto pierde el quorum y deja de aceptar
+      cambios. Pon cluster.qdevice_host (una tercera maquina pequeña) o, si lo asumes,
+      cluster.accept_no_quorum_on_failure: true (docs/arquitectura.md, quorum).
+  run_once: true
+
+- name: IPs de gestion unicas
+  ansible.builtin.assert:
+    that: >-
+      groups['pve_nodes'] | map('extract', hostvars, 'ansible_host') | list | unique | length
+      == pve_node_count | int
+    fail_msg: Hay nodos con la misma ansible_host.
+  run_once: true
+
+- name: La red dedicada de corosync (link1) es de todos los nodos o de ninguno
+  ansible.builtin.assert:
+    that: >-
+      groups['pve_nodes'] | map('extract', hostvars) | selectattr('pve_corosync_link1', 'defined') | list | length
+      in [0, pve_node_count | int]
+    fail_msg: pve_corosync_link1 tiene que estar en todos los nodos o en ninguno.
+  run_once: true
+
+- name: Sin ZFS, el instalador solo usa un disco
+  ansible.builtin.assert:
+    that: pve_zfs | bool or pve_disks | length == 1
+    fail_msg: "{{ inventory_hostname }}: con {{ pve.filesystem }} pon un solo disco en pve_disks (o usa zfs)."
+
+- name: El bond es la interfaz del bridge
+  ansible.builtin.assert:
+    that: pve_bond is not defined or pve_nic is match('^bond[0-9]+$')
+    fail_msg: "{{ inventory_hostname }}: con pve_bond, pve_nic tiene que ser el bond (bond0)."
+
+- name: La replicacion necesita ZFS y destinos que existan
+  ansible.builtin.assert:
+    that:
+      - pve_zfs | bool
+      - (replication.jobs | default([]) | map(attribute='target') | difference(groups['pve_nodes'])) | length == 0
+    fail_msg: replication.enabled exige pve.filesystem zfs y que cada target sea un nodo del inventario.
+  run_once: true
+  when: replication.enabled | default(false) | bool

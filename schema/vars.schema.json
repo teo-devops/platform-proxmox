@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/teo-devops/platform-proxmox/schema/vars.schema.json",
+  "title": "platform-proxmox: configuracion del entorno (group_vars/all/main.yml)",
+  "description": "Referencia: docs/inventario.md",
+  "type": "object",
+  "required": ["cluster", "pve", "network", "install", "access", "storage"],
+  "additionalProperties": false,
+  "properties": {
+    "cluster": {
+      "type": "object",
+      "required": ["name", "domain"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,14}$", "description": "Maximo 15 caracteres (corosync)"},
+        "domain": {"type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"},
+        "qdevice_host": {"type": ["string", "null"]},
+        "accept_no_quorum_on_failure": {"type": "boolean"},
+        "corosync_link1_cidr_bits": {"type": "integer", "minimum": 8, "maximum": 30}
+      }
+    },
+    "pve": {
+      "type": "object",
+      "required": ["major", "repo", "filesystem"],
+      "additionalProperties": false,
+      "properties": {
+        "major": {"enum": [8, 9]},
+        "repo": {"enum": ["no-subscription", "enterprise"]},
+        "upgrade": {"type": "boolean"},
+        "filesystem": {"enum": ["zfs", "ext4", "xfs"]},
+        "zfs_ashift": {"type": "integer", "minimum": 9, "maximum": 16},
+        "zfs_compress": {"enum": ["on", "off", "lz4", "zstd"]},
+        "zfs_arc_max_mib": {"oneOf": [{"const": "auto"}, {"type": "integer", "minimum": 512}]}
+      }
+    },
+    "network": {
+      "type": "object",
+      "required": ["cidr_bits", "gateway", "dns", "bridge"],
+      "additionalProperties": false,
+      "properties": {
+        "cidr_bits": {"type": "integer", "minimum": 8, "maximum": 30},
+        "gateway": {"type": "string"},
+        "dns": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "bridge": {"type": "string", "pattern": "^vmbr[0-9]+$"},
+        "vlan_aware": {"type": "boolean"},
+        "vlan_ids": {"type": "string", "pattern": "^[0-9]+(-[0-9]+)?( [0-9]+(-[0-9]+)?)*$"},
+        "mtu": {"type": "integer", "minimum": 1280, "maximum": 9216},
+        "apply": {"type": "boolean"}
+      }
+    },
+    "install": {
+      "type": "object",
+      "required": ["keyboard", "country", "timezone", "mailto", "root_password_hash"],
+      "additionalProperties": false,
+      "properties": {
+        "keyboard": {"type": "string"},
+        "country": {"type": "string", "pattern": "^[a-z]{2}$"},
+        "timezone": {"type": "string"},
+        "mailto": {"type": "string"},
+        "root_password_hash": {"type": "string"},
+        "root_ssh_keys": {"type": "array", "items": {"type": "string", "pattern": "^(ssh-(ed25519|rsa)|ecdsa-sha2-nistp[0-9]+) "}}
+      }
+    },
+    "access": {
+      "type": "object",
+      "required": ["admins"],
+      "additionalProperties": false,
+      "properties": {
+        "admins": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "required": ["user"], "additionalProperties": false,
+            "properties": {"user": {"type": "string", "pattern": "^[a-z][a-z0-9._-]{0,31}$"}, "comment": {"type": "string"}}
+          }
+        },
+        "pools": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"}}
+      }
+    },
+    "storage": {
+      "type": "object",
+      "required": ["image_datastore"],
+      "additionalProperties": false,
+      "properties": {
+        "image_datastore": {"type": "string"},
+        "enable_import_content": {"type": "boolean"}
+      }
+    },
+    "replication": {
+      "type": "object",
+      "required": ["enabled"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "schedule": {"type": "string"},
+        "jobs": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["vmid", "target"], "additionalProperties": false,
+            "properties": {"vmid": {"type": "integer", "minimum": 100}, "target": {"type": "string"}, "schedule": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "backup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pbs": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "required": ["storage_id", "server", "datastore", "username", "password", "fingerprint"],
+              "additionalProperties": false,
+              "properties": {
+                "storage_id": {"type": "string"},
+                "server": {"type": "string"},
+                "datastore": {"type": "string"},
+                "username": {"type": "string"},
+                "password": {"type": "string"},
+                "fingerprint": {"type": "string"},
+                "encryption": {"type": "boolean"},
+                "job": {
+                  "type": "object", "required": ["id", "schedule"], "additionalProperties": false,
+                  "properties": {
+                    "id": {"type": "string"}, "schedule": {"type": "string"},
+                    "exclude": {"type": "array", "items": {"type": "integer"}}
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

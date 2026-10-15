@@ -1,0 +1,76 @@
+---
+# Cuentas de administracion y pools. Una vez, desde el primer nodo (run_once).
+#   - Cada admin, su usuario en el realm pve con el rol Administrator en /. root@pam
+#     queda para la consola y las emergencias.
+#   - Contraseñas y segundo factor los pone cada admin (no viven en el inventario):
+#       pveum passwd <user>@pve        y   Datacenter -> Permissions -> Two Factor -> TOTP
+#   - Las cuentas de automatizacion (tokens de pve-platform-iac) NO se crean aqui:
+#     las crea `make proxmox-acl` de ese repo, con privilegios minimos.
+# Referencia: docs/accesos.md
+
+# Leccion aprendida: activar TOTP a nivel de realm (`pveum realm modify pve --tfa ...`)
+# es el mecanismo antiguo; sin claves cargadas por un admin BLOQUEA a todo el realm
+# ("missing required 2nd keys"). El segundo factor va por usuario.
+- name: El realm pve no tiene TOTP forzado (mecanismo antiguo)
+  ansible.builtin.command: pveum realm list --output-format json
+  register: access_realms
+  changed_when: false
+  check_mode: false
+
+- name: Sin TFA en el realm
+  ansible.builtin.assert:
+    that: (access_realms.stdout | from_json | selectattr('realm', 'equalto', 'pve') | map(attribute='tfa') | select | list) | length == 0
+    fail_msg: >-
+      El realm pve tiene TFA a nivel de realm: bloquea a todos los usuarios sin clave cargada.
+      Quitalo con `pveum realm modify pve --delete tfa` y usa TOTP por usuario (docs/accesos.md).
+
+- name: Usuarios existentes
+  ansible.builtin.command: pveum user list --output-format json
+  register: access_users
+  changed_when: false
+  check_mode: false
+
+- name: Crear los admins
+  ansible.builtin.command: >-
+    pveum user add {{ item.user }}@pve --comment "{{ item.comment | default('admin (platform-proxmox)') }}"
+  changed_when: true
+  loop: "{{ access.admins }}"
+  loop_control:
+    label: "{{ item.user }}@pve"
+  when: (item.user ~ '@pve') not in (access_users.stdout | from_json | map(attribute='userid') | list)
+
+- name: ACL actuales
+  ansible.builtin.command: pveum acl list --output-format json
+  register: access_acls
+  changed_when: false
+  check_mode: false
+
+- name: Admins con el rol Administrator en /
+  ansible.builtin.command: pveum acl modify / --users {{ item.user }}@pve --roles Administrator
+  changed_when: true
+  loop: "{{ access.admins }}"
+  loop_control:
+    label: "{{ item.user }}@pve"
+  when: >-
+    access_acls.stdout | from_json
+    | selectattr('path', 'equalto', '/') | selectattr('ugid', 'equalto', item.user ~ '@pve')
+    | selectattr('roleid', 'equalto', 'Administrator') | list | length == 0
+
+- name: Pools existentes
+  ansible.builtin.command: pveum pool list --output-format json
+  register: access_pools
+  changed_when: false
+  check_mode: false
+
+- name: Crear los pools
+  ansible.builtin.command: pveum pool add {{ item }}
+  changed_when: true
+  loop: "{{ access.pools | default([]) }}"
+  when: item not in (access_pools.stdout | from_json | map(attribute='poolid') | list)
+
+- name: Siguiente paso de los admins
+  ansible.builtin.debug:
+    msg: >-
+      Cada admin: `pveum passwd <usuario>@pve` (como root) y despues, desde su cuenta,
+      Datacenter -> Permissions -> Two Factor -> Add -> TOTP. En el login, el usuario va SIN @pve
+      y el realm se elige en el desplegable.
