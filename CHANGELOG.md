@@ -2,6 +2,11 @@
 
 Versionado semántico; mientras sea `0.x`, puede haber cambios incompatibles entre versiones menores.
 
+## Sin publicar
+
+- Inventario fuera del repo: `INVENTORY_DIR` (Makefile) y `PLATFORM_INVENTORY_DIR` (scripts), para
+  usar platform-proxmox como submódulo de un repo privado ([docs/inventario.md](docs/inventario.md#dónde-guardar-el-inventario)).
+
 ## v0.1.0-beta — 15-oct-2026 — Primera versión pública
 
 De servidores sin instalar a un cluster Proxmox VE de 1 a N nodos, a partir de un inventario de Ansible.

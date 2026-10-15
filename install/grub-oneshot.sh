@@ -92,7 +92,7 @@ GRUB
 if [ "$BUILD_ONLY" = true ]; then build_installer_files; exit 0; fi
 [ -n "$ENV" ] && [ -n "$NODE" ] || usage
 root="$(cd "$(dirname "$0")/.." && pwd)"
-hv=$(ansible-inventory -i "$root/inventory/$ENV" --host "$NODE")
+hv=$(ansible-inventory -i "${PLATFORM_INVENTORY_DIR:-$root/inventory}/$ENV" --host "$NODE")
 HOST="${HOST:-$(jq -r .ansible_host <<<"$hv")}"
 BMC=$(jq -r '.bmc.host // "la BMC del nodo"' <<<"$hv")
 build_installer_files

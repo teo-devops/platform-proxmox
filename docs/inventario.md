@@ -13,9 +13,31 @@ $EDITOR inventory/produccion/group_vars/all/vault.yml && ansible-vault encrypt i
 make check ENV=produccion
 ```
 
-El inventario se puede subir a tu fork o a tu copia del repo: los secretos van cifrados en el
-vault, y lo demás (IPs internas, nombres) no da acceso por sí solo. Los ficheros generados
-(`build/`) no se suben: llevan el hash de la contraseña de root.
+Los ficheros generados (`build/`) nunca se suben: llevan el hash de la contraseña de root.
+
+## Dónde guardar el inventario
+
+**Recomendado: un repo privado tuyo**, con platform-proxmox como submódulo fijado a una versión.
+Tu inventario (IPs internas, nombres de nodos, vault cifrado) no acaba en un repo público, tiene su
+historial, y actualizar platform-proxmox es un cambio revisable (subir el submódulo):
+
+```
+mi-infra/                       (repo privado)
+├── platform-proxmox/           submódulo, fijado a un tag (v0.1.0-beta…)
+├── inventory/<entorno>/        hosts.yml, group_vars/all/{main,vault}.yml, known_hosts
+└── Makefile                    make <objetivo>  ->  make -C platform-proxmox <objetivo> INVENTORY_DIR=$(CURDIR)/inventory
+```
+
+```sh
+git submodule add https://github.com/teo-devops/platform-proxmox platform-proxmox
+git -C platform-proxmox checkout v0.1.0-beta
+make -C platform-proxmox new ENV=lab FROM=2-nodos INVENTORY_DIR=$PWD/inventory
+```
+
+Todos los objetivos y scripts admiten el inventario fuera del repo (`INVENTORY_DIR` en el Makefile;
+`PLATFORM_INVENTORY_DIR` en `scripts/`, `bmc/` e `install/`).
+
+Alternativa: `inventory/` en tu fork o copia de este repo. Vale si esa copia es privada.
 
 ## `hosts.yml`: los nodos
 
